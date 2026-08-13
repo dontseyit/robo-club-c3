@@ -1,12 +1,12 @@
 # Robo Club C3 — 2WD Robot Car
 
-A beginner-friendly robot car built from a 2WD smart car chassis kit, an ESP32-C3 SuperMini (with tiny 0.42" OLED), and an L298N motor driver. This README walks you through the full wiring and how to flash the motor test program.
+A beginner-friendly robot car built from a 2WD smart car chassis kit, an ESP32-C3 SuperMini (without OLED), and an L298N motor driver. This README walks you through the full wiring and how to flash the motor test program.
 
 ## Parts
 
 | Part | Notes |
 |---|---|
-| ESP32-C3 SuperMini | The version with the 0.42" OLED (72×40, SSD1306) on board |
+| ESP32-C3 SuperMini | The version without OLED on board |
 | HW-566 expansion board | The SuperMini plugs into it; breaks out all pins |
 | L298N motor driver module | Red module with heatsink and screw terminals |
 | 2WD chassis kit (yourDroid) | Chassis, 2 TT gear motors, caster wheel, 4×AA battery box |
@@ -62,16 +62,17 @@ The L298N has only one GND screw terminal — the battery black wire and the ESP
 - **Never power the ESP32 from USB and the L298N 5V at the same time.** Before plugging in the USB cable to flash, switch the battery pack off (or pull out one battery). Unplug USB before switching the battery back on.
 - **Never connect 5V to a 3.3V pin.** The L298N's 5V output goes to the SuperMini's 5V pin only — the ESP32-C3 chip itself runs on 3.3V and the 5V pin feeds its onboard regulator.
 - **Common ground is not optional.** Battery (−), L298N GND, and ESP32 GND must all be connected together.
-- **First test with the wheels off the ground.** The program waits 5 seconds after boot ("Ready..." on the OLED) before moving.
+- **First test with the wheels off the ground.** The program waits 5 seconds after boot before moving.
 
 ## Power notes
 
 - The 4×AA pack gives ~6V. The L298N is an old chip that drops about 2V internally, so the motors only see ~4V — they run, but leisurely. For more speed use 6×AA or a 2S (7.4V) battery on the same `+12V` terminal.
-- If the OLED goes blank or the board restarts while motors run, the batteries are sagging under load — use fresh batteries or the bigger pack.
+- If the RBG LED on board doesn't light up or the board restarts while motors run, the batteries are sagging under load — use fresh batteries or the bigger pack.
 
 ## Building and flashing
 
 This is a [PlatformIO](https://platformio.org/) project (VS Code + PlatformIO extension).
+But the main program is compatible with Arduino IDE.
 
 1. Open the project folder in VS Code.
 2. **Switch the battery pack off**, then connect the board via USB.
@@ -80,7 +81,7 @@ This is a [PlatformIO](https://platformio.org/) project (VS Code + PlatformIO ex
 
 ## What the test program does
 
-[src/main.cpp](src/main.cpp) shows each action on the OLED while it runs this loop forever:
+[src/main.cpp](src/main.cpp) runs this loop forever:
 
 ```
 FORWARD (2 s) → STOP → BACK (2 s) → STOP → SPIN L → SPIN R → REST (3 s)
@@ -95,5 +96,5 @@ Motor speed is set to 200 out of 255 (`SPEED` constant).
 | Wheel spins the wrong way | Swap that motor's two wires at OUT1/OUT2 or OUT3/OUT4 |
 | Left/right swapped when spinning | Motor pairs are swapped — exchange them at the terminals |
 | Motor hums or doesn't move | ENA/ENB cap still on, loose signal wire, or weak batteries |
-| OLED blank / board restarts under load | Battery voltage sag — fresh or bigger batteries |
-| `bus is not initialized` / `NULL TX buffer` in serial monitor | Wrong I2C pins for this board — the OLED is on SDA=5, SCL=6 |
+| LED on board doesn't light up / board restarts under load | Battery voltage sag — fresh or bigger batteries |
+| `bus is not initialized` / `NULL TX buffer` in serial monitor | Wrong I2C pins for this board check the board version |
