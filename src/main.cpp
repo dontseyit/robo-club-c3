@@ -1,9 +1,7 @@
 #include <Arduino.h>
-#include <U8g2lib.h>
-#include <Wire.h>
 
-// 0.42" OLED (72x40, SSD1306) — I2C on SDA=5, SCL=6
-U8G2_SSD1306_72X40_ER_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE, /* clock=*/ 6, /* data=*/ 5);
+// ESP32-C3 SuperMini (no OLED) — status via Serial and onboard LED (GPIO 8, active LOW)
+const int PIN_LED = 8;
 
 // L298N wiring
 const int PIN_ENA = 0;   // left speed (PWM)
@@ -26,11 +24,9 @@ void setMotors(int left, int right) {
   analogWrite(PIN_ENB, abs(right));
 }
 
-void show(const char *msg) {
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_7x14B_tr);
-  u8g2.drawStr(2, 26, msg);
-  u8g2.sendBuffer();
+void show(const char *msg, bool moving) {
+  Serial.println(msg);
+  digitalWrite(PIN_LED, moving ? LOW : HIGH);  // LED on while moving
 }
 
 void setup() {
@@ -40,39 +36,44 @@ void setup() {
   pinMode(PIN_IN4, OUTPUT);
   pinMode(PIN_ENA, OUTPUT);
   pinMode(PIN_ENB, OUTPUT);
+  pinMode(PIN_LED, OUTPUT);
   setMotors(0, 0);
 
-  u8g2.begin();
-  show("Ready...");
-  delay(5000);  // time to set the car down (or hold it up!)
+  Serial.begin(115200);
+  show("Ready...", false);
+  // blink while waiting so there is a visible "about to start" signal
+  for (int i = 0; i < 10; i++) {
+    digitalWrite(PIN_LED, i % 2 ? HIGH : LOW);
+    delay(500);
+  }
 }
 
 void loop() {
-  show("FORWARD");
+  show("FORWARD", true);
   setMotors(SPEED, SPEED);
   delay(2000);
 
-  show("STOP");
+  show("STOP", false);
   setMotors(0, 0);
   delay(1000);
 
-  show("BACK");
+  show("BACK", true);
   setMotors(-SPEED, -SPEED);
   delay(2000);
 
-  show("STOP");
+  show("STOP", false);
   setMotors(0, 0);
   delay(1000);
 
-  show("SPIN L");
+  show("SPIN L", true);
   setMotors(-SPEED, SPEED);
   delay(1500);
 
-  show("SPIN R");
+  show("SPIN R", true);
   setMotors(SPEED, -SPEED);
   delay(1500);
 
-  show("REST");
+  show("REST", false);
   setMotors(0, 0);
   delay(3000);
 }
