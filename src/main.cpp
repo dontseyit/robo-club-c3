@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WebServer.h>
 
 // ESP32-C3 SuperMini (no OLED) — status via Serial and onboard LED (GPIO 8, active LOW)
 const int PIN_LED = 8;
@@ -13,20 +15,108 @@ const int PIN_ENB = 10;  // right speed (PWM)
 
 const int SPEED = 200;   // 0..255
 
+const char *AP_SSID = "RoboticsClub-C3";
+const char *AP_PASSWORD = "roboticsclub1";  // min 8 chars
+
+WebServer server(80);
+
+const unsigned long WATCHDOG_MS = 3000;  // auto-stop if no command received in time
+bool moving = false;
+unsigned long lastCmdMs = 0;
+
 // left/right: -255 (full reverse) .. 255 (full forward)
 void setMotors(int left, int right) {
   digitalWrite(PIN_IN1, left >= 0 ? HIGH : LOW);
   digitalWrite(PIN_IN2, left >= 0 ? LOW : HIGH);
   analogWrite(PIN_ENA, abs(left));
 
-  digitalWrite(PIN_IN3, right >= 0 ? HIGH : LOW);
-  digitalWrite(PIN_IN4, right >= 0 ? LOW : HIGH);
+  digitalWrite(PIN_IN3, right >= 0 ? LOW : HIGH);  // reversed: right motor is wired backward
+  digitalWrite(PIN_IN4, right >= 0 ? HIGH : LOW);
   analogWrite(PIN_ENB, abs(right));
+
+  digitalWrite(PIN_LED, (left == 0 && right == 0) ? HIGH : LOW);  // LED on while moving
 }
 
-void show(const char *msg, bool moving) {
-  Serial.println(msg);
-  digitalWrite(PIN_LED, moving ? LOW : HIGH);  // LED on while moving
+const char PAGE[] PROGMEM = R"HTML(
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Robotics Club C3</title>
+<style>
+  body { font-family: sans-serif; text-align: center; background: #111; color: #eee; margin: 0; padding: 20px; }
+  h1 { font-size: 20px; }
+  .pad { display: grid; grid-template-columns: 80px 80px 80px; grid-template-rows: 80px 80px 80px; gap: 10px; justify-content: center; margin: 30px auto; }
+  button { font-size: 28px; border-radius: 12px; border: none; background: #2a6; color: white; touch-action: manipulation; user-select: none; }
+  button:active { background: #1a4; }
+  #stop { background: #c33; }
+  #stop:active { background: #a11; }
+  .fwd { grid-column: 2; grid-row: 1; }
+  .left { grid-column: 1; grid-row: 2; }
+  .stopbtn { grid-column: 2; grid-row: 2; }
+  .right { grid-column: 3; grid-row: 2; }
+  .back { grid-column: 2; grid-row: 3; }
+</style>
+</head>
+<body>
+<h1>Robotics Club C3 Control</h1>
+<div class="pad">
+  <button class="fwd" data-d="F">&uarr;</button>
+  <button class="left" data-d="L">&larr;</button>
+  <button id="stop" class="stopbtn" data-d="S">&#9632;</button>
+  <button class="right" data-d="R">&rarr;</button>
+  <button class="back" data-d="B">&darr;</button>
+</div>
+<script>
+function send(d) { fetch('/cmd?d=' + d); }
+var holdTimer = null;
+document.querySelectorAll('button[data-d]').forEach(function(btn) {
+  var d = btn.getAttribute('data-d');
+  if (d === 'S') {
+    btn.addEventListener('click', function() { send('S'); });
+    return;
+  }
+  var start = function(e) {
+    e.preventDefault();
+    send(d);
+    clearInterval(holdTimer);
+    holdTimer = setInterval(function() { send(d); }, 1000);  // keep-alive while held
+  };
+  var stop = function(e) {
+    e.preventDefault();
+    clearInterval(holdTimer);
+    send('S');
+  };
+  btn.addEventListener('touchstart', start);
+  btn.addEventListener('touchend', stop);
+  btn.addEventListener('touchcancel', stop);
+  btn.addEventListener('mousedown', start);
+  btn.addEventListener('mouseup', stop);
+  btn.addEventListener('mouseleave', stop);
+});
+</script>
+</body>
+</html>
+)HTML";
+
+void handleRoot() {
+  server.send_P(200, "text/html", PAGE);
+}
+
+void handleCmd() {
+  String d = server.arg("d");
+  if (d == "F") setMotors(SPEED, SPEED);
+  else if (d == "B") setMotors(-SPEED, -SPEED);
+  else if (d == "L") setMotors(-SPEED, SPEED);
+  else if (d == "R") setMotors(SPEED, -SPEED);
+  else setMotors(0, 0);  // "S" or anything else = stop
+
+  moving = (d == "F" || d == "B" || d == "L" || d == "R");
+  lastCmdMs = millis();
+
+  Serial.println(d);
+  server.send(200, "text/plain", "ok");
 }
 
 void setup() {
@@ -40,40 +130,23 @@ void setup() {
   setMotors(0, 0);
 
   Serial.begin(115200);
-  show("Ready...", false);
-  // blink while waiting so there is a visible "about to start" signal
-  for (int i = 0; i < 10; i++) {
-    digitalWrite(PIN_LED, i % 2 ? HIGH : LOW);
-    delay(500);
-  }
+
+  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  Serial.print("AP started. Connect to Wi-Fi \"");
+  Serial.print(AP_SSID);
+  Serial.println("\" and open http://192.168.4.1");
+
+  server.on("/", handleRoot);
+  server.on("/cmd", handleCmd);
+  server.begin();
 }
 
 void loop() {
-  show("FORWARD", true);
-  setMotors(SPEED, SPEED);
-  delay(2000);
+  server.handleClient();
 
-  show("STOP", false);
-  setMotors(0, 0);
-  delay(1000);
-
-  show("BACK", true);
-  setMotors(-SPEED, -SPEED);
-  delay(2000);
-
-  show("STOP", false);
-  setMotors(0, 0);
-  delay(1000);
-
-  show("SPIN L", true);
-  setMotors(-SPEED, SPEED);
-  delay(1500);
-
-  show("SPIN R", true);
-  setMotors(SPEED, -SPEED);
-  delay(1500);
-
-  show("REST", false);
-  setMotors(0, 0);
-  delay(3000);
+  if (moving && millis() - lastCmdMs > WATCHDOG_MS) {
+    Serial.println("Watchdog: no command received, stopping");
+    setMotors(0, 0);
+    moving = false;
+  }
 }
